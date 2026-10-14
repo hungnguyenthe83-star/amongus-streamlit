@@ -1,7 +1,7 @@
 import streamlit as str
 
 # Cấu hình hiển thị rộng cho game
-str.set_page_config(page_title="Among Us 2D Evolution", layout="wide")
+str.set_page_config(page_title="Among Us 2D Standard Edition", layout="wide")
 
 str.markdown("""
     <style>
@@ -53,15 +53,14 @@ str.markdown("""
 <div class="game-container">
     <div class="game-header">AMONG US EVOLUTION</div>
     <div class="tip-box">
-        🕹️ <b>CƠ CHẾ MỚI:</b> Game tự động phân vai ngẫu nhiên (30% làm Imposter, 70% làm Crewmate).<br>
-        🔧 <b>Crewmate:</b> Đến phòng Electrical, nhấn <b>E</b> hoặc nút <b>USE</b> để mở minigame nối dây điện.<br>
-        🔪 <b>Imposter:</b> Chạy lại gần Bot Xanh, nhấn <b>Q</b> hoặc nút <b>KILL</b> để ám sát mục tiêu!
+        🕹️ <b>CƠ CHẾ:</b> Game tự động phân vai ngẫu nhiên (30% làm Imposter, 70% làm Crewmate).<br>
+        🔧 <b>Crewmate:</b> Đến phòng Electrical, nhấn nút <b>USE</b> góc phải để mở minigame nối dây điện.<br>
+        🔪 <b>Imposter:</b> Chạy lại gần Bot Xanh, nhấn nút <b>KILL</b> góc phải để thắng trận!
     </div>
 </div>
 """, unsafe_allow_html=True)
 
-# Khối mã HTML5/JS xử lý toàn bộ logic phức tạp của trò chơi
-game_full_html = """
+game_safe_html = """
 <div style="display: flex; justify-content: center; position: relative;">
     <canvas id="gameCanvas" width="800" height="480" tabindex="1"></canvas>
 </div>
@@ -70,15 +69,13 @@ game_full_html = """
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 
-// Tự động bắt nét vào canvas
 canvas.focus();
 
-// Cấu hình phông nền và phân vai (Ngẫu nhiên 30% Imposter)
+// Phân vai ngẫu nhiên
 const isUserImposter = Math.random() < 0.3;
 let showRoleScreen = true;
-let roleScreenTimer = 120; // Hiển thị màn hình phân vai trong 2 giây (60fps * 2)
+let roleScreenTimer = 120; 
 
-// Nhân vật của người chơi
 const player = {
     x: 150, y: 240, width: 24, height: 32, speed: 4.5,
     color: isUserImposter ? "#ff3e3e" : "#00d2ff",
@@ -86,7 +83,6 @@ const player = {
     tasksDone: 0, totalTasks: 3
 };
 
-// Bot AI máy đóng vai trò ngược lại với người chơi
 const bot = {
     x: 650, y: 240, width: 24, height: 32, speed: 2.0,
     color: isUserImposter ? "#00d2ff" : "#ff3e3e",
@@ -95,14 +91,12 @@ const bot = {
     isDead: false
 };
 
-// Các phòng chức năng chính
 const rooms = [
     { name: "Cafeteria", x: 400, y: 100, w: 180, h: 100 },
     { name: "Electrical", x: 150, y: 350, w: 120, h: 90 },
     { name: "Weapons", x: 650, y: 120, w: 110, h: 90 }
 ];
 
-// Trạng thái hệ thống Minigame sửa điện (Nối dây)
 let isMinigameOpen = false;
 const wiringGame = {
     leftWires: [
@@ -118,47 +112,35 @@ const wiringGame = {
     selectedLeft: null
 };
 
-// Cấu hình các nút bấm UI ảo góc màn hình giống Among Us thật
 const uiButtons = {
-    use: { x: 710, y: 400, r: 35, label: "USE", active: false, key: "e" },
-    kill: { x: 620, y: 400, r: 35, label: "KILL", active: false, key: "q" },
-    report: { x: 710, y: 310, r: 30, label: "REPORT", active: false, key: "r" }
+    use: { x: 710, y: 400, r: 35, label: "USE", active: false },
+    kill: { x: 620, y: 400, r: 35, label: "KILL", active: false }
 };
 
-let gameState = "PLAYING"; // PLAYING, WIN, LOSE
+let gameState = "PLAYING";
 const keys = {};
 
-// Xử lý sự kiện bàn phím
 window.addEventListener("keydown", (e) => {
     let k = e.key.toLowerCase();
     if(["arrowup", "arrowdown", "arrowleft", "arrowright", " "].includes(k)) {
         e.preventDefault();
     }
     keys[k] = true;
-
-    // Phím tắt tương tác nhanh
-    if (k === "e" && uiButtons.use.active) triggerUseAction();
-    if (k === "q" && uiButtons.kill.active) triggerKillAction();
-    if (k === "escape") isMinigameOpen = false;
 });
 window.addEventListener("keyup", (e) => { keys[e.key.toLowerCase()] = false; });
 
-// Xử lý sự kiện click chuột (Cho cả nút bấm UI ảo và Minigame sửa điện)
 canvas.addEventListener("mousedown", (e) => {
     const rect = canvas.getBoundingClientRect();
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
 
-    // 1. Nếu đang mở minigame sửa điện
     if (isMinigameOpen) {
-        // Kiểm tra click chọn dây bên trái (X = 260)
         wiringGame.leftWires.forEach(w => {
             if (Math.abs(mouseX - 260) < 20 && Math.abs(mouseY - w.y) < 20 && !w.connected) {
                 wiringGame.selectedLeft = w;
             }
         });
         
-        // Kiểm tra thả/click nối sang dây bên phải (X = 540)
         if (wiringGame.selectedLeft) {
             wiringGame.rightWires.forEach(rw => {
                 if (Math.abs(mouseX - 540) < 20 && Math.abs(mouseY - rw.y) < 20 && rw.id === wiringGame.selectedLeft.id) {
@@ -166,10 +148,9 @@ canvas.addEventListener("mousedown", (e) => {
                     rw.connected = true;
                     wiringGame.selectedLeft = null;
                     
-                    // Kiểm tra hoàn thành tất cả các dây
                     if (wiringGame.leftWires.every(w => w.connected)) {
                         isMinigameOpen = false;
-                        player.tasksDone = player.totalTasks; // Hoàn thành toàn bộ task sửa điện
+                        player.tasksDone = player.totalTasks;
                         if (player.role === "CREWMATE") gameState = "WIN";
                     }
                 }
@@ -178,30 +159,18 @@ canvas.addEventListener("mousedown", (e) => {
         return;
     }
 
-    // 2. Kiểm tra click các nút bấm UI trên màn hình chính
     for (let btnKey in uiButtons) {
         let btn = uiButtons[btnKey];
         if (btn.active && Math.hypot(mouseX - btn.x, mouseY - btn.y) < btn.r) {
-            if (btnKey === "use") triggerUseAction();
-            if (btnKey === "kill") triggerKillAction();
+            if (btnKey === "use") isMinigameOpen = true;
+            if (btnKey === "kill") {
+                bot.isDead = true;
+                gameState = "WIN";
+            }
         }
     }
 });
 
-function triggerUseAction() {
-    if (player.role === "CREWMATE" && isInRoom(player, "Electrical")) {
-        isMinigameOpen = true;
-    }
-}
-
-function triggerKillAction() {
-    if (player.role === "IMPOSTER" && !bot.isDead) {
-        bot.isDead = true;
-        gameState = "WIN";
-    }
-}
-
-// Kiểm tra xem thực thể có đang đứng trong phòng cụ thể không
 function isInRoom(ent, roomName) {
     let r = rooms.find(rm => rm.name === roomName);
     if (!r) return false;
@@ -210,10 +179,9 @@ function isInRoom(ent, roomName) {
     return (cx >= r.x && cx <= r.x + r.w && cy >= r.y && cy <= r.y + r.h);
 }
 
-// Vẽ tạo hình đặc trưng phi hành đoàn Among Us
+// Hàm vẽ an toàn không dùng roundRect bị lỗi
 function drawCharacter(ctx, x, y, width, height, color, isDead) {
     if (isDead) {
-        // Vẽ cái xương đặc trưng khi bị hạ gục
         ctx.fillStyle = color;
         ctx.fillRect(x, y + height/2, width, height/2);
         ctx.fillStyle = "#ffffff";
@@ -221,25 +189,21 @@ function drawCharacter(ctx, x, y, width, height, color, isDead) {
         return;
     }
     const r = width / 2;
-    // Balo sau lưng
+    // Balo
     ctx.fillStyle = color;
-    ctx.fillRect(x - 6, y + height/4, 6, height/2);
-    // Thân bo tròn đầu
+    ctx.fillRect(x - 5, y + 8, 5, 16);
+    // Thân
     ctx.beginPath();
     ctx.arc(x + r, y + r, r, Math.PI, 0);
     ctx.lineTo(x + width, y + height - 6);
     ctx.lineTo(x, y + height - 6);
     ctx.closePath(); ctx.fill();
     // Chân
-    ctx.fillRect(x, y + height - 6, 7, 6);
-    ctx.fillRect(x + width - 7, y + height - 6, 7, 6);
-    // Kính bảo hộ hình bầu dục (Visor)
+    ctx.fillRect(x, y + height - 6, 6, 6);
+    ctx.fillRect(x + width - 6, y + height - 6, 6, 6);
+    // Kính bảo hộ phẳng (Tránh lỗi trình duyệt)
     ctx.fillStyle = "#e3fafc";
-    ctx.strokeStyle = "#101622";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.roundRect(x + width - 8, y + 6, 12, 10, 4);
-    ctx.fill(); ctx.stroke();
+    ctx.fillRect(x + width - 6, y + 6, 10, 8);
 }
 
 function update() {
@@ -250,7 +214,6 @@ function update() {
     }
     if (gameState !== "PLAYING" || isMinigameOpen) return;
 
-    // Di chuyển nhân vật người chơi
     if (keys["w"] || keys["arrowup"]) player.y -= player.speed;
     if (keys["s"] || keys["arrowdown"]) player.y += player.speed;
     if (keys["a"] || keys["arrowleft"]) player.x -= player.speed;
@@ -259,20 +222,69 @@ function update() {
     player.x = Math.max(10, Math.min(canvas.width - player.width - 10, player.x));
     player.y = Math.max(10, Math.min(canvas.height - player.height - 10, player.y));
 
-    // Kích hoạt trạng thái hiển thị của các nút bấm UI
     uiButtons.use.active = (player.role === "CREWMATE" && isInRoom(player, "Electrical"));
     
     let distToBot = Math.hypot((player.x + player.width/2) - (bot.x + bot.width/2), (player.y + player.height/2) - (bot.y + bot.height/2));
     uiButtons.kill.active = (player.role === "IMPOSTER" && distToBot < 50 && !bot.isDead);
 
-    // AI của Bot di chuyển quanh bản đồ
     if (!bot.isDead) {
         if (bot.role === "IMPOSTER" && distToBot < 150) {
-            // Nếu Bot là Imposter, nó sẽ rượt đuổi người chơi để ám sát
             let angle = Math.atan2(player.y - bot.y, player.x - bot.x);
             bot.x += Math.cos(angle) * bot.speed;
             bot.y += Math.sin(angle) * bot.speed;
-            if (distToBot < 25) gameState = "LOSE"; // Người chơi bị bot hạ gục
+            if (distToBot < 25) gameState = "LOSE";
         } else {
-            // Tuần tra di chuyển ngẫu nhiên
             if (Math.hypot(bot.targetX - bot.x, bot.targetY - bot.y) < 15) {
+                bot.targetX = Math.random() * (canvas.width - 100) + 50;
+                bot.targetY = Math.random() * (canvas.height - 100) + 50;
+            }
+            let angle = Math.atan2(bot.targetY - bot.y, bot.targetX - bot.x);
+            bot.x += Math.cos(angle) * (bot.speed * 0.7);
+            bot.y += Math.sin(angle) * (bot.speed * 0.7);
+        }
+    }
+}
+
+function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    rooms.forEach(r => {
+        ctx.fillStyle = "#111622";
+        ctx.fillRect(r.x, r.y, r.w, r.h);
+        ctx.strokeStyle = "#24344d";
+        ctx.lineWidth = 3;
+        ctx.strokeRect(r.x, r.y, r.w, r.h);
+
+        if (r.name === "Electrical") {
+            ctx.fillStyle = player.tasksDone === player.totalTasks ? "#2ecc71" : "#ffaa00";
+            ctx.beginPath(); ctx.arc(r.x + r.w/2, r.y + r.h/2, 6, 0, Math.PI*2); ctx.fill();
+        }
+
+        ctx.fillStyle = "#576c8c";
+        ctx.font = "bold 11px Arial";
+        ctx.textAlign = "center";
+        ctx.fillText(r.name.toUpperCase(), r.x + r.w/2, r.y + 20);
+    });
+
+    drawCharacter(ctx, player.x, player.y, player.width, player.height, player.color, false);
+    drawCharacter(ctx, bot.x, bot.y, bot.width, bot.height, bot.color, bot.isDead);
+
+    for (let btnKey in uiButtons) {
+        let btn = uiButtons[btnKey];
+        if (player.role === "IMPOSTER" && btnKey === "use") continue;
+        if (player.role === "CREWMATE" && btnKey === "kill") continue;
+
+        ctx.beginPath();
+        ctx.arc(btn.x, btn.y, btn.r, 0, Math.PI * 2);
+        ctx.fillStyle = btn.active ? "rgba(235, 94, 40, 0.8)" : "rgba(40, 49, 73, 0.4)";
+        ctx.fill();
+        ctx.strokeStyle = btn.active ? "#ff6b35" : "#485460";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        ctx.fillStyle = btn.active ? "#ffffff" : "#7f8c8d";
+        ctx.font = "bold 11px Arial";
+        ctx.textAlign = "center";
+        ctx.fillText(btn.label, btn.x, btn.y + 4);
+    }
+
