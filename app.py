@@ -1,405 +1,262 @@
-# Among Us 2D Clone - Full Game
-import pygame
-import sys
-import random
-import math
+import streamlit as str
 
-# Initialize Pygame
-pygame.init()
-pygame.font.init()
+# Cấu hình giao diện Streamlit hiển thị rộng rãi để chơi game
+str.set_page_config(page_title="Among Us 2D - Streamlit Edition", layout="wide")
 
-# Constants
-WIDTH, HEIGHT = 1000, 700
-FPS = 60
-WHITE = (255, 255, 255)
-BLACK = (0, 0, 0)
-RED = (255, 50, 50)
-BLUE = (50, 50, 255)
-GREEN = (50, 255, 50)
-YELLOW = (255, 255, 50)
-GRAY = (100, 100, 100)
-LIGHT_GRAY = (180, 180, 180)
-DARK_GRAY = (40, 40, 40)
+str.markdown("""
+    <style>
+        /* Tối ưu hóa giao diện Streamlit ẩn bớt các khoảng trống thừa */
+        .block-container { padding-top: 1rem; padding-bottom: 0rem; }
+        footer {visibility: hidden;}
+        #MainMenu {visibility: hidden;}
+        
+        /* Khung chứa game */
+        .game-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Courier New', Courier, monospace;
+            background-color: #0b0e14;
+            color: #ffffff;
+            padding: 10px;
+            border-radius: 12px;
+            box-shadow: 0px 8px 24px rgba(0,0,0,0.7);
+        }
+        
+        .game-title {
+            color: #ff4747;
+            font-weight: bold;
+            text-shadow: 2px 2px #000;
+            margin-bottom: 5px;
+        }
 
-# Screen setup
-screen = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption("Among Us 2D Clone")
-clock = pygame.time.Clock()
-font = pygame.font.SysFont("Arial", 24)
-large_font = pygame.font.SysFont("Arial", 40)
+        .instructions {
+            background: #161c24;
+            padding: 8px 15px;
+            border-radius: 8px;
+            font-size: 13px;
+            margin-bottom: 10px;
+            border-left: 4px solid #00bcff;
+        }
 
-# Game State
-# States: "MENU", "PLAYING", "TASK", "MEETING", "GAMEOVER"
-game_state = "MENU"
-role = "Crewmate" # or "Imposter"
-winner = ""
+        canvas {
+            border: 4px solid #3a4454;
+            background-color: #111721;
+            box-shadow: inset 0 0 20px #000;
+            border-radius: 8px;
+            cursor: crosshair;
+        }
+    </style>
+""", unsafe_allow_html=True)
 
-# Map Design (The Skeld layout simplified)
-# Rooms: Cafeteria, Weapons, Navigation, Shields, O2, Admin, Storage, Electrical, Lower Engine, Upper Engine, Reactor, Security, MedBay
-rooms = {
-    "Cafeteria": pygame.Rect(400, 100, 200, 150),
-    "Weapons": pygame.Rect(650, 100, 120, 100),
-    "Navigation": pygame.Rect(820, 220, 100, 120),
-    "Shields": pygame.Rect(700, 450, 120, 120),
-    "O2": pygame.Rect(620, 250, 100, 90),
-    "Admin": pygame.Rect(580, 380, 110, 100),
-    "Storage": pygame.Rect(420, 400, 140, 160),
-    "Electrical": pygame.Rect(250, 380, 120, 110),
-    "Lower Engine": pygame.Rect(100, 450, 120, 120),
-    "Upper Engine": pygame.Rect(100, 100, 120, 120),
-    "Reactor": pygame.Rect(10, 250, 100, 160),
-    "Security": pygame.Rect(220, 250, 100, 90),
-    "MedBay": pygame.Rect(280, 150, 100, 110)
+# Giao diện hiển thị phía trên Canvas game
+str.markdown("""
+<div class="game-wrapper">
+    <h1 class="game-title">AMONG US 2D</h1>
+    <div class="instructions">
+        🕹️ <b>Cách chơi:</b> Dùng các phím <b>W, A, S, D</b> hoặc <b>Phím Mũi Tên</b> để di chuyển. <br>
+        🎯 <b>Nhiệm vụ:</b> Đến gần các chấm màu <b>Vàng (Task)</b> để sửa máy. Né tránh Bot màu <b>Đỏ (Imposter)</b> kẻo bị ám sát!
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
+# Toàn bộ logic game viết bằng JavaScript chạy trực tiếp trên trình duyệt của người dùng
+game_js_html = """
+<div style="display: flex; justify-content: center;">
+    <canvas id="amongUsCanvas" width="800" height="500"></canvas>
+</div>
+
+<script>
+const canvas = document.getElementById("amongUsCanvas");
+const ctx = canvas.getContext("2d");
+
+// Cấu hình Người chơi (Crewmate Xanh)
+const player = {
+    x: 100,
+    y: 250,
+    size: 15,
+    speed: 4,
+    color: "#00d2ff",
+    tasksCompleted: 0
+};
+
+// Cấu hình Kẻ giả mạo (Imposter Đỏ chạy tự động)
+const imposter = {
+    x: 700,
+    y: 250,
+    size: 15,
+    speed: 2,
+    color: "#ff3333",
+    state: "patrol", // patrol hoặc chase
+    targetX: 700,
+    targetY: 250
+};
+
+// Danh sách các phòng và Vị trí nhiệm vụ (Màu vàng)
+const tasks = [
+    { name: "Cafeteria", x: 400, y: 80, radius: 20, completed: false },
+    { name: "Electrical", x: 150, y: 400, radius: 20, completed: false },
+    { name: "Weapons", x: 650, y: 120, radius: 20, completed: false },
+    { name: "Navigation", x: 720, y: 300, radius: 20, completed: false }
+];
+
+// Trạng thái chung của Trận đấu
+let gameState = "PLAYING"; // PLAYING, WIN, LOSE
+const keys = {};
+
+// Lắng nghe sự kiện bàn phím
+window.addEventListener("keydown", (e) => { keys[e.key.toLowerCase()] = true; });
+window.addEventListener("keyup", (e) => { keys[e.key.toLowerCase()] = false; });
+
+// Hàm tính khoảng cách giữa 2 vật thể
+function getDistance(x1, y1, x2, y2) {
+    return Math.hypot(x2 - x1, y2 - y1);
 }
 
-# Corridors linking rooms
-corridors = [
-    pygame.Rect(500, 250, 50, 150), # Cafeteria to Storage
-    pygame.Rect(370, 420, 50, 40),  # Electrical to Storage
-    pygame.Rect(220, 480, 200, 40), # Lower Engine to Storage
-    pygame.Rect(150, 220, 40, 230), # Upper to Lower Engine
-    pygame.Rect(50, 310, 200, 40),  # Reactor to Engine corridor
-    pygame.Rect(580, 130, 70, 40),  # Cafeteria to Weapons
-    pygame.Rect(700, 200, 40, 250), # Weapons to Shields
-    pygame.Rect(750, 270, 70, 40),  # Corridor to Navigation
-    pygame.Rect(550, 480, 150, 40)  # Storage to Shields
-]
+// Xử lý Logic di chuyển và va chạm từng khung hình
+function update() {
+    if (gameState !== "PLAYING") return;
 
-def in_bounds(pos):
-    # Check if a position is inside any room or corridor
-    p = pygame.Rect(pos[0]-15, pos[1]-15, 30, 30)
-    for r in rooms.values():
-        if r.colliderect(p):
-            return True
-    for c in corridors:
-        if c.colliderect(p):
-            return True
-    return False
+    // 1. Di chuyển Người chơi bằng phím W-A-S-D hoặc Arrow Keys
+    if (keys["w"] || keys["arrowup"]) player.y -= player.speed;
+    if (keys["s"] || keys["arrowdown"]) player.y += player.speed;
+    if (keys["a"] || keys["arrowleft"]) player.x -= player.speed;
+    if (keys["d"] || keys["arrowright"]) player.x += player.speed;
 
-# Tasks Setup
-tasks = [
-    {"name": "Swipe Card", "room": "Admin", "done": False, "rect": pygame.Rect(620, 420, 20, 20)},
-    {"name": "Fix Wiring", "room": "Electrical", "done": False, "rect": pygame.Rect(280, 400, 20, 20)},
-    {"name": "Clear Asteroids", "room": "Weapons", "done": False, "rect": pygame.Rect(700, 120, 20, 20)},
-    {"name": "Calibrate Distributor", "room": "Electrical", "done": False, "rect": pygame.Rect(320, 450, 20, 20)},
-    {"name": "Chart Course", "room": "Navigation", "done": False, "rect": pygame.Rect(850, 260, 20, 20)},
-    {"name": "Clean O2 Filter", "room": "O2", "done": False, "rect": pygame.Rect(650, 280, 20, 20)}
-]
-current_active_task = None
-swipe_stage = 0
-wire_colors = [RED, BLUE, YELLOW, GREEN]
-random.shuffle(wire_colors)
-wire_connections = {}
+    // Giới hạn người chơi không chạy ra khỏi viền map
+    player.x = Math.max(player.size, Math.min(canvas.width - player.size, player.x));
+    player.y = Math.max(player.size, Math.min(canvas.height - player.size, player.y));
 
-# Emergency Button
-emergency_button_rect = pygame.Rect(490, 160, 20, 20)
+    // 2. Xử lý làm nhiệm vụ khi đứng đè lên chấm Vàng
+    tasks.forEach(task => {
+        if (!task.completed && getDistance(player.x, player.y, task.x, task.y) < task.radius + player.size) {
+            task.completed = true;
+            player.tasksCompleted++;
+            if (player.tasksCompleted === tasks.length) {
+                gameState = "WIN";
+            }
+        }
+    });
 
-# Players
-class Actor:
-    def __init__(self, x, y, color, is_ai=True, role="Crewmate"):
-        self.x = x
-        self.y = y
-        self.color = color
-        self.is_ai = is_ai
-        self.role = role
-        self.alive = True
-        self.speed = 3
-        self.target_x = x
-        self.target_y = y
-        self.cooldown = 0
-        self.id = random.randint(1000, 9999)
-
-    def draw(self, surface):
-        if not self.alive:
-            # Draw bone/ghost outline or dead body
-            pygame.draw.ellipse(surface, self.color, (self.x-15, self.y, 30, 15))
-            pygame.draw.rect(surface, WHITE, (self.x-5, self.y-10, 10, 15))
-            return
-        # Body
-        pygame.draw.ellipse(surface, self.color, (self.x-15, self.y-20, 30, 40))
-        # Visor
-        pygame.draw.ellipse(surface, (150, 220, 255), (self.x, self.y-15, 12, 10))
-        # Backpack
-        pygame.draw.rect(surface, self.color, (self.x-22, self.y-10, 8, 22))
-
-    def move(self):
-        if not self.alive:
-            return
-        if self.is_ai:
-            if math.hypot(self.target_x - self.x, self.target_y - self.y) < 10:
-                # Pick new room destination
-                random_room = random.choice(list(rooms.values()))
-                self.target_x = random_room.centerx + random.randint(-30, 30)
-                self.target_y = random_room.centery + random.randint(-30, 30)
-            
-            # Simple vector movement towards target
-            dx = self.target_x - self.x
-            dy = self.target_y - self.y
-            dist = math.hypot(dx, dy)
-            if dist > 0:
-                nx = self.x + (dx / dist) * self.speed
-                ny = self.y + (dy / dist) * self.speed
-                if in_bounds((nx, ny)):
-                    self.x, self.y = nx, ny
-                else:
-                    # Reset target if stuck
-                    self.target_x = self.x
-                    self.target_y = self.y
-        if self.cooldown > 0:
-            self.cooldown -= 1
-
-# Initialize Players
-player = Actor(500, 150, BLUE, is_ai=False, role="Crewmate")
-bots = [
-    Actor(450, 130, RED, is_ai=True, role="Imposter"),
-    Actor(550, 130, GREEN, is_ai=True, role="Crewmate"),
-    Actor(480, 200, YELLOW, is_ai=True, role="Crewmate"),
-    Actor(520, 200, (255, 100, 200), is_ai=True, role="Crewmate")
-]
-all_actors = [player] + bots
-
-# Voting Meeting State
-meeting_timer = 0
-voted_out_text = ""
-
-def reset_game(chosen_role):
-    global player, bots, all_actors, game_state, tasks, role
-    role = chosen_role
-    player = Actor(500, 150, BLUE, is_ai=False, role=role)
+    // 3. AI của Imposter (Kẻ giết người tự động rượt đuổi)
+    let distToPlayer = getDistance(imposter.x, imposter.y, player.x, player.y);
     
-    # Assign one random imposter among bots if player is crewmate
-    bots = [
-        Actor(450, 130, RED, is_ai=True, role="Imposter" if role == "Crewmate" else "Crewmate"),
-        Actor(550, 130, GREEN, is_ai=True, role="Crewmate"),
-        Actor(480, 200, YELLOW, is_ai=True, role="Crewmate"),
-        Actor(520, 200, (255, 100, 200), is_ai=True, role="Crewmate")
-    ]
-    all_actors = [player] + bots
-    for t in tasks:
-        t["done"] = False
-    game_state = "PLAYING"
+    if (distToPlayer < 180) {
+        // Nếu phát hiện Crewmate ở gần, chuyển sang chế độ Săn Đuổi
+        imposter.state = "chase";
+        let angle = Math.atan2(player.y - imposter.y, player.x - imposter.x);
+        imposter.x += Math.cos(angle) * imposter.speed;
+        imposter.y += Math.sin(angle) * imposter.speed;
+    } else {
+        // Đi tuần tra tự động giữa các phòng ngẫu nhiên
+        if (imposter.state === "chase" || getDistance(imposter.x, imposter.y, imposter.targetX, imposter.targetY) < 10) {
+            imposter.state = "patrol";
+            imposter.targetX = Math.random() * (canvas.width - 40) + 20;
+            imposter.targetY = Math.random() * (canvas.height - 40) + 20;
+        }
+        let angle = Math.atan2(imposter.targetY - imposter.y, imposter.targetX - imposter.x);
+        imposter.x += Math.cos(angle) * (imposter.speed * 0.8);
+        imposter.y += Math.sin(angle) * (imposter.speed * 0.8);
+    }
 
-# Game Loop
-running = True
-while running:
-    screen.fill(BLACK)
-    
-    for event in pygame.event.get():
-        if event.get_type() == pygame.QUIT:
-            running = False
-            
-        elif game_state == "MENU":
-            if event.get_type() == pygame.MOUSEBUTTONDOWN:
-                mx, my = event.pos
-                if pygame.Rect(350, 300, 300, 50).collidepoint(mx, my):
-                    reset_game("Crewmate")
-                elif pygame.Rect(350, 380, 300, 50).collidepoint(mx, my):
-                    reset_game("Imposter")
-                    
-        elif game_state == "PLAYING":
-            if event.get_type() == pygame.KEYDOWN:
-                if event.key == pygame.K_e: # Use / Task / Emergency
-                    # Check emergency button
-                    if math.hypot(player.x - emergency_button_rect.centerx, player.y - emergency_button_rect.centery) < 40:
-                        game_state = "MEETING"
-                        meeting_timer = 180
-                        voted_out_text = "Emergency Meeting Called!"
-                    # Check tasks
-                    if player.role == "Crewmate":
-                        for t in tasks:
-                            if not t["done"] and math.hypot(player.x - t["rect"].centerx, player.y - t["rect"].centery) < 40:
-                                current_active_task = t
-                                game_state = "TASK"
-                                swipe_stage = 0
-                elif event.key == pygame.K_q and player.role == "Imposter": # Kill action
-                    for bot in bots:
-                        if bot.alive and math.hypot(player.x - bot.x, player.y - bot.y) < 50:
-                            bot.alive = False
-                            player.cooldown = 600 # 10 seconds cooldown
-                            break
-                            
-        elif game_state == "TASK":
-            if event.get_type() == pygame.MOUSEBUTTONDOWN and current_active_task:
-                mx, my = event.pos
-                if current_active_task["name"] == "Swipe Card":
-                    if pygame.Rect(350, 350, 100, 50).collidepoint(mx, my):
-                        swipe_stage = 1
-                elif current_active_task["name"] == "Fix Wiring":
-                    # Simple automated connection for demo simplicity
-                    current_active_task["done"] = True
-                    game_state = "PLAYING"
-            elif event.get_type() == pygame.MOUSEMOTION and game_state == "TASK" and current_active_task and current_active_task["name"] == "Swipe Card" and swipe_stage == 1:
-                mx, my = event.pos
-                if mx > 600:
-                    current_active_task["done"] = True
-                    game_state = "PLAYING"
-            if event.get_type() == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                game_state = "PLAYING"
-                
-        elif game_state == "MEETING":
-            if event.get_type() == pygame.MOUSEBUTTONDOWN:
-                mx, my = event.pos
-                # Vote on an actor
-                for i, act in enumerate(all_actors):
-                    if pygame.Rect(350, 200 + i*60, 300, 40).collidepoint(mx, my) and act.alive:
-                        # Process voting outcome
-                        if act.role == "Imposter":
-                            voted_out_text = f"{act.color} was the Imposter!"
-                            act.alive = False
-                        else:
-                            voted_out_text = f"{act.color} was not an Imposter."
-                            act.alive = False
-                        meeting_timer = 90 # short delay to show result
-                        
-        elif game_state == "GAMEOVER":
-            if event.get_type() == pygame.KEYDOWN:
-                game_state = "MENU"
+    // 4. Kiểm tra điều kiện thua cuộc (Imposter chạm trúng Crewmate)
+    if (distToPlayer < player.size + imposter.size) {
+        gameState = "LOSE";
+    }
+}
 
-    # --- Game Logic Updates ---
-    if game_state == "PLAYING":
-        # Player Movement
-        keys = pygame.key.get_pressed()
-        dx, dy = 0, 0
-        if keys[pygame.K_LEFT] or keys[pygame.K_a]: dx = -player.speed
-        if keys[pygame.K_RIGHT] or keys[pygame.K_d]: dx = player.speed
-        if keys[pygame.K_UP] or keys[pygame.K_w]: dy = -player.speed
-        if keys[pygame.K_DOWN] or keys[pygame.K_s]: dy = player.speed
-        
-        if dx != 0 or dy != 0:
-            if in_bounds((player.x + dx, player.y + dy)):
-                player.x += dx
-                player.y += dy
-                
-        # Bot logic & Imposter Kills
-        for act in all_actors:
-            act.move()
-            if act.alive and act.role == "Imposter" and act.is_ai:
-                # AI Imposter tries to kill nearby crewmates
-                for vic in all_actors:
-                    if vic.alive and vic.role == "Crewmate" and math.hypot(act.x - vic.x, act.y - vic.y) < 40:
-                        vic.alive = False
-                        
-        # Win / Loss Condition Checks
-        alives = [a for a in all_actors if a.alive]
-        imposters = [a for a in alives if a.role == "Imposter"]
-        crewmates = [a for a in alives if a.role == "Crewmate"]
-        
-        if len(imposters) == 0:
-            game_state = "GAMEOVER"
-            winner = "Crewmates Win! All Imposters eliminated."
-        elif len(imposters) >= len(crewmates):
-            game_state = "GAMEOVER"
-            winner = "Imposters Win! Crewmates outnumbered."
-        elif player.role == "Crewmate" and all(t["done"] for t in tasks):
-            game_state = "GAMEOVER"
-            winner = "Crewmates Win! All tasks completed."
+// Hàm vẽ Đồ họa lên màn hình canvas
+function draw() {
+    // Xóa màn hình cũ để vẽ khung hình mới
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    elif game_state == "MEETING":
-        meeting_timer -= 1
-        if meeting_timer <= 0:
-            game_state = "PLAYING"
+    // Vẽ nền Bản đồ (Hệ thống lưới vũ trụ đơn giản)
+    ctx.strokeStyle = "#1b2436";
+    ctx.lineWidth = 1;
+    for (let i = 0; i < canvas.width; i += 40) {
+        ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, canvas.height); ctx.stroke();
+    }
+    for (let j = 0; j < canvas.height; j += 40) {
+        ctx.beginPath(); ctx.moveTo(0, j); ctx.lineTo(canvas.width, j); ctx.stroke();
+    }
 
-    # --- Render Screens ---
-    if game_state == "MENU":
-        title_text = large_font.render("AMONG US 2D CLONE", True, RED)
-        screen.blit(title_text, (WIDTH//2 - title_text.get_width()//2, 150))
-        
-        pygame.draw.rect(screen, GRAY, (350, 300, 300, 50))
-        btn1 = font.render("Play as Crewmate", True, WHITE)
-        screen.blit(btn1, (WIDTH//2 - btn1.get_width()//2, 310))
-        
-        pygame.draw.rect(screen, GRAY, (350, 380, 300, 50))
-        btn2 = font.render("Play as Imposter", True, WHITE)
-        screen.blit(btn2, (WIDTH//2 - btn2.get_width()//2, 390))
+    // Vẽ các Khu vực Nhiệm vụ (Vòng tròn Vàng)
+    tasks.forEach(task => {
+        ctx.beginPath();
+        ctx.arc(task.x, task.y, task.radius, 0, Math.PI * 2);
+        ctx.fillStyle = task.completed ? "rgba(46, 204, 113, 0.2)" : "rgba(241, 196, 15, 0.3)";
+        ctx.fill();
+        ctx.strokeStyle = task.completed ? "#2ecc71" : "#f1c40f";
+        ctx.lineWidth = 2;
+        ctx.stroke();
 
-    elif game_state in ["PLAYING", "TASK"]:
-        # Draw Map Boundaries
-        for room_name, rect in rooms.items():
-            pygame.draw.rect(screen, DARK_GRAY, rect)
-            pygame.draw.rect(screen, LIGHT_GRAY, rect, 2)
-            r_txt = font.render(room_name, True, WHITE)
-            screen.blit(r_txt, (rect.x + 5, rect.y + 5))
-            
-        for corr in corridors:
-            pygame.draw.rect(screen, DARK_GRAY, corr)
-            pygame.draw.rect(screen, LIGHT_GRAY, corr, 2)
-            
-        # Draw Emergency Button
-        pygame.draw.circle(screen, RED, emergency_button_rect.center, 15)
-        
-        # Draw Tasks
-        for t in tasks:
-            if not t["done"]:
-                pygame.draw.rect(screen, YELLOW, t["rect"])
-                
-        # Draw Actors
-        for act in all_actors:
-            act.draw(screen)
-            
-        # HUD / Text Info
-        role_txt = font.render(f"Role: {player.role}", True, RED if player.role == "Imposter" else GREEN)
-        screen.blit(role_txt, (20, 20))
-        
-        if player.role == "Crewmate":
-            done_cnt = sum(1 for t in tasks if t["done"])
-            task_txt = font.render(f"Tasks: {done_cnt}/{len(tasks)}", True, WHITE)
-            screen.blit(task_txt, (20, 50))
-        else:
-            kill_txt = font.render(f"Kill Cooldown: {max(0, player.cooldown//60)}s (Press Q near crew)", True, RED)
-            screen.blit(kill_txt, (20, 50))
+        // Tên phòng
+        ctx.fillStyle = "#a5b1c2";
+        ctx.font = "11px Arial";
+        ctx.textAlign = "center";
+        ctx.fillText(task.name, task.x, task.y - task.radius - 5);
+    });
 
-        # Render Task Overlay Mini-game
-        if game_state == "TASK" and current_active_task:
-            overlay = pygame.Surface((600, 400))
-            overlay.fill(DARK_GRAY)
-            pygame.draw.rect(overlay, WHITE, (0, 0, 600, 400), 4)
-            
-            t_title = font.render(f"Task: {current_active_task['name']}", True, WHITE)
-            overlay.blit(t_title, (30, 20))
-            
-            if current_active_task["name"] == "Swipe Card":
-                # Draw card reader
-                pygame.draw.rect(overlay, GRAY, (100, 150, 400, 100))
-                pygame.draw.rect(overlay, BLACK, (150, 180, 300, 40))
-                card_txt = font.render("Drag Card From Left to Right" if swipe_stage == 1 else "Click Card to Start", True, YELLOW)
-                overlay.blit(card_txt, (150, 270))
-                pygame.draw.rect(overlay, RED if swipe_stage == 0 else GREEN, (50, 150, 40, 100))
-                
-            elif current_active_task["name"] == "Fix Wiring":
-                desc_txt = font.render("Click anywhere inside to finish wiring instantly", True, YELLOW)
-                overlay.blit(desc_txt, (50, 180))
-                
-            screen.blit(overlay, (200, 150))
+    // Vẽ Nhân vật Người chơi (Crewmate) kèm Kính bảo hộ đặc trưng
+    ctx.beginPath();
+    ctx.arc(player.x, player.y, player.size, 0, Math.PI * 2);
+    ctx.fillStyle = player.color;
+    ctx.fill();
+    // Kính bảo hộ
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(player.x + 2, player.y - 6, 8, 8);
 
-    elif game_state == "MEETING":
-        m_title = large_font.render("Who is the Imposter?", True, RED)
-        screen.blit(m_title, (WIDTH//2 - m_title.get_width()//2, 50))
-        
-        if voted_out_text:
-            v_txt = font.render(voted_out_text, True, YELLOW)
-            screen.blit(v_txt, (WIDTH//2 - v_txt.get_width()//2, 120))
-            
-        for i, act in enumerate(all_actors):
-            box_rect = pygame.Rect(350, 200 + i*60, 300, 40)
-            pygame.draw.rect(screen, GRAY if act.alive else DARK_GRAY, box_rect)
-            pygame.draw.rect(screen, WHITE, box_rect, 2)
-            
-            # Label actor by color index
-            status = "Alive" if act.alive else "Dead"
-            act_txt = font.render(f"Player {i+1} ({status})", True, act.color)
-            screen.blit(act_txt, (370, 210 + i*60))
+    // Vẽ Nhân vật AI Kẻ địch (Imposter Đỏ)
+    ctx.beginPath();
+    ctx.arc(imposter.x, imposter.y, imposter.size, 0, Math.PI * 2);
+    ctx.fillStyle = imposter.color;
+    ctx.fill();
+    // Kính bảo hộ Imposter
+    ctx.fillStyle = "#636e72";
+    ctx.fillRect(imposter.x - 10, imposter.y - 6, 8, 8);
 
-    elif game_state == "GAMEOVER":
-        go_txt = large_font.render("GAME OVER", True, RED)
-        win_txt = font.render(winner, True, WHITE)
-        restart_txt = font.render("Press any key to return to Main Menu", True, LIGHT_GRAY)
-        
-        screen.blit(go_txt, (WIDTH//2 - go_txt.get_width()//2, 200))
-        screen.blit(win_txt, (WIDTH//2 - win_txt.get_width()//2, 280))
-        screen.blit(restart_txt, (WIDTH//2 - restart_txt.get_width()//2, 400))
+    // Hiển thị thanh Tiến trình làm nhiệm vụ (Task Bar) ở góc trên
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "bold 14px Arial";
+    ctx.textAlign = "left";
+    ctx.fillText(`TOTAL TASKS COMPLETED: ${player.tasksCompleted} / ${tasks.length}`, 20, 30);
 
-    pygame.display.flip()
-    clock.tick(FPS)
+    // Giao diện khi Thắng hoặc Thua cuộc
+    if (gameState === "WIN") {
+        ctx.fillStyle = "rgba(0, 0, 0, 0.8)";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "#2ecc71";
+        ctx.font = "bold 40px Courier New";
+        ctx.textAlign = "center";
+        ctx.fillText("VICTORY", canvas.width / 2, canvas.height / 2);
+        ctx.font = "16px Arial";
+        ctx.fillStyle = "#ffffff";
+        ctx.fillText("Bạn đã hoàn thành xuất sắc toàn bộ nhiệm vụ!", canvas.width / 2, canvas.height / 2 + 50);
+    } else if (gameState === "LOSE") {
+        ctx.fillStyle = "rgba(0, 0, 0, 0.85)";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "#e74c3c";
+        ctx.font = "bold 40px Courier New";
+        ctx.textAlign = "center";
+        ctx.fillText("DEFEAT", canvas.width / 2, canvas.height / 2);
+        ctx.font = "16px Arial";
+        ctx.fillStyle = "#ffffff";
+        ctx.fillText("Bạn đã bị Imposter sát hại bí mật!", canvas.width / 2, canvas.height / 2 + 50);
+    }
+}
 
-pygame.quit()
-sys.exit()
+// Vòng lặp Core của Game chạy liên tục 60 khung hình / giây
+function gameLoop() {
+    update();
+    draw();
+    requestAnimationFrame(gameLoop);
+}
+
+// Khởi chạy game
+gameLoop();
+</script>
+"""
+
+# Truyền mã nguồn HTML5/JS vào giao diện Streamlit
+str.components.v1.html(game_js_html, height=530)
