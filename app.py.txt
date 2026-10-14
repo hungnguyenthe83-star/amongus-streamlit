@@ -1,0 +1,405 @@
+# Among Us 2D Clone - Full Game
+import pygame
+import sys
+import random
+import math
+
+# Initialize Pygame
+pygame.init()
+pygame.font.init()
+
+# Constants
+WIDTH, HEIGHT = 1000, 700
+FPS = 60
+WHITE = (255, 255, 255)
+BLACK = (0, 0, 0)
+RED = (255, 50, 50)
+BLUE = (50, 50, 255)
+GREEN = (50, 255, 50)
+YELLOW = (255, 255, 50)
+GRAY = (100, 100, 100)
+LIGHT_GRAY = (180, 180, 180)
+DARK_GRAY = (40, 40, 40)
+
+# Screen setup
+screen = pygame.display.set_mode((WIDTH, HEIGHT))
+pygame.display.set_caption("Among Us 2D Clone")
+clock = pygame.time.Clock()
+font = pygame.font.SysFont("Arial", 24)
+large_font = pygame.font.SysFont("Arial", 40)
+
+# Game State
+# States: "MENU", "PLAYING", "TASK", "MEETING", "GAMEOVER"
+game_state = "MENU"
+role = "Crewmate" # or "Imposter"
+winner = ""
+
+# Map Design (The Skeld layout simplified)
+# Rooms: Cafeteria, Weapons, Navigation, Shields, O2, Admin, Storage, Electrical, Lower Engine, Upper Engine, Reactor, Security, MedBay
+rooms = {
+    "Cafeteria": pygame.Rect(400, 100, 200, 150),
+    "Weapons": pygame.Rect(650, 100, 120, 100),
+    "Navigation": pygame.Rect(820, 220, 100, 120),
+    "Shields": pygame.Rect(700, 450, 120, 120),
+    "O2": pygame.Rect(620, 250, 100, 90),
+    "Admin": pygame.Rect(580, 380, 110, 100),
+    "Storage": pygame.Rect(420, 400, 140, 160),
+    "Electrical": pygame.Rect(250, 380, 120, 110),
+    "Lower Engine": pygame.Rect(100, 450, 120, 120),
+    "Upper Engine": pygame.Rect(100, 100, 120, 120),
+    "Reactor": pygame.Rect(10, 250, 100, 160),
+    "Security": pygame.Rect(220, 250, 100, 90),
+    "MedBay": pygame.Rect(280, 150, 100, 110)
+}
+
+# Corridors linking rooms
+corridors = [
+    pygame.Rect(500, 250, 50, 150), # Cafeteria to Storage
+    pygame.Rect(370, 420, 50, 40),  # Electrical to Storage
+    pygame.Rect(220, 480, 200, 40), # Lower Engine to Storage
+    pygame.Rect(150, 220, 40, 230), # Upper to Lower Engine
+    pygame.Rect(50, 310, 200, 40),  # Reactor to Engine corridor
+    pygame.Rect(580, 130, 70, 40),  # Cafeteria to Weapons
+    pygame.Rect(700, 200, 40, 250), # Weapons to Shields
+    pygame.Rect(750, 270, 70, 40),  # Corridor to Navigation
+    pygame.Rect(550, 480, 150, 40)  # Storage to Shields
+]
+
+def in_bounds(pos):
+    # Check if a position is inside any room or corridor
+    p = pygame.Rect(pos[0]-15, pos[1]-15, 30, 30)
+    for r in rooms.values():
+        if r.colliderect(p):
+            return True
+    for c in corridors:
+        if c.colliderect(p):
+            return True
+    return False
+
+# Tasks Setup
+tasks = [
+    {"name": "Swipe Card", "room": "Admin", "done": False, "rect": pygame.Rect(620, 420, 20, 20)},
+    {"name": "Fix Wiring", "room": "Electrical", "done": False, "rect": pygame.Rect(280, 400, 20, 20)},
+    {"name": "Clear Asteroids", "room": "Weapons", "done": False, "rect": pygame.Rect(700, 120, 20, 20)},
+    {"name": "Calibrate Distributor", "room": "Electrical", "done": False, "rect": pygame.Rect(320, 450, 20, 20)},
+    {"name": "Chart Course", "room": "Navigation", "done": False, "rect": pygame.Rect(850, 260, 20, 20)},
+    {"name": "Clean O2 Filter", "room": "O2", "done": False, "rect": pygame.Rect(650, 280, 20, 20)}
+]
+current_active_task = None
+swipe_stage = 0
+wire_colors = [RED, BLUE, YELLOW, GREEN]
+random.shuffle(wire_colors)
+wire_connections = {}
+
+# Emergency Button
+emergency_button_rect = pygame.Rect(490, 160, 20, 20)
+
+# Players
+class Actor:
+    def __init__(self, x, y, color, is_ai=True, role="Crewmate"):
+        self.x = x
+        self.y = y
+        self.color = color
+        self.is_ai = is_ai
+        self.role = role
+        self.alive = True
+        self.speed = 3
+        self.target_x = x
+        self.target_y = y
+        self.cooldown = 0
+        self.id = random.randint(1000, 9999)
+
+    def draw(self, surface):
+        if not self.alive:
+            # Draw bone/ghost outline or dead body
+            pygame.draw.ellipse(surface, self.color, (self.x-15, self.y, 30, 15))
+            pygame.draw.rect(surface, WHITE, (self.x-5, self.y-10, 10, 15))
+            return
+        # Body
+        pygame.draw.ellipse(surface, self.color, (self.x-15, self.y-20, 30, 40))
+        # Visor
+        pygame.draw.ellipse(surface, (150, 220, 255), (self.x, self.y-15, 12, 10))
+        # Backpack
+        pygame.draw.rect(surface, self.color, (self.x-22, self.y-10, 8, 22))
+
+    def move(self):
+        if not self.alive:
+            return
+        if self.is_ai:
+            if math.hypot(self.target_x - self.x, self.target_y - self.y) < 10:
+                # Pick new room destination
+                random_room = random.choice(list(rooms.values()))
+                self.target_x = random_room.centerx + random.randint(-30, 30)
+                self.target_y = random_room.centery + random.randint(-30, 30)
+            
+            # Simple vector movement towards target
+            dx = self.target_x - self.x
+            dy = self.target_y - self.y
+            dist = math.hypot(dx, dy)
+            if dist > 0:
+                nx = self.x + (dx / dist) * self.speed
+                ny = self.y + (dy / dist) * self.speed
+                if in_bounds((nx, ny)):
+                    self.x, self.y = nx, ny
+                else:
+                    # Reset target if stuck
+                    self.target_x = self.x
+                    self.target_y = self.y
+        if self.cooldown > 0:
+            self.cooldown -= 1
+
+# Initialize Players
+player = Actor(500, 150, BLUE, is_ai=False, role="Crewmate")
+bots = [
+    Actor(450, 130, RED, is_ai=True, role="Imposter"),
+    Actor(550, 130, GREEN, is_ai=True, role="Crewmate"),
+    Actor(480, 200, YELLOW, is_ai=True, role="Crewmate"),
+    Actor(520, 200, (255, 100, 200), is_ai=True, role="Crewmate")
+]
+all_actors = [player] + bots
+
+# Voting Meeting State
+meeting_timer = 0
+voted_out_text = ""
+
+def reset_game(chosen_role):
+    global player, bots, all_actors, game_state, tasks, role
+    role = chosen_role
+    player = Actor(500, 150, BLUE, is_ai=False, role=role)
+    
+    # Assign one random imposter among bots if player is crewmate
+    bots = [
+        Actor(450, 130, RED, is_ai=True, role="Imposter" if role == "Crewmate" else "Crewmate"),
+        Actor(550, 130, GREEN, is_ai=True, role="Crewmate"),
+        Actor(480, 200, YELLOW, is_ai=True, role="Crewmate"),
+        Actor(520, 200, (255, 100, 200), is_ai=True, role="Crewmate")
+    ]
+    all_actors = [player] + bots
+    for t in tasks:
+        t["done"] = False
+    game_state = "PLAYING"
+
+# Game Loop
+running = True
+while running:
+    screen.fill(BLACK)
+    
+    for event in pygame.event.get():
+        if event.get_type() == pygame.QUIT:
+            running = False
+            
+        elif game_state == "MENU":
+            if event.get_type() == pygame.MOUSEBUTTONDOWN:
+                mx, my = event.pos
+                if pygame.Rect(350, 300, 300, 50).collidepoint(mx, my):
+                    reset_game("Crewmate")
+                elif pygame.Rect(350, 380, 300, 50).collidepoint(mx, my):
+                    reset_game("Imposter")
+                    
+        elif game_state == "PLAYING":
+            if event.get_type() == pygame.KEYDOWN:
+                if event.key == pygame.K_e: # Use / Task / Emergency
+                    # Check emergency button
+                    if math.hypot(player.x - emergency_button_rect.centerx, player.y - emergency_button_rect.centery) < 40:
+                        game_state = "MEETING"
+                        meeting_timer = 180
+                        voted_out_text = "Emergency Meeting Called!"
+                    # Check tasks
+                    if player.role == "Crewmate":
+                        for t in tasks:
+                            if not t["done"] and math.hypot(player.x - t["rect"].centerx, player.y - t["rect"].centery) < 40:
+                                current_active_task = t
+                                game_state = "TASK"
+                                swipe_stage = 0
+                elif event.key == pygame.K_q and player.role == "Imposter": # Kill action
+                    for bot in bots:
+                        if bot.alive and math.hypot(player.x - bot.x, player.y - bot.y) < 50:
+                            bot.alive = False
+                            player.cooldown = 600 # 10 seconds cooldown
+                            break
+                            
+        elif game_state == "TASK":
+            if event.get_type() == pygame.MOUSEBUTTONDOWN and current_active_task:
+                mx, my = event.pos
+                if current_active_task["name"] == "Swipe Card":
+                    if pygame.Rect(350, 350, 100, 50).collidepoint(mx, my):
+                        swipe_stage = 1
+                elif current_active_task["name"] == "Fix Wiring":
+                    # Simple automated connection for demo simplicity
+                    current_active_task["done"] = True
+                    game_state = "PLAYING"
+            elif event.get_type() == pygame.MOUSEMOTION and game_state == "TASK" and current_active_task and current_active_task["name"] == "Swipe Card" and swipe_stage == 1:
+                mx, my = event.pos
+                if mx > 600:
+                    current_active_task["done"] = True
+                    game_state = "PLAYING"
+            if event.get_type() == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                game_state = "PLAYING"
+                
+        elif game_state == "MEETING":
+            if event.get_type() == pygame.MOUSEBUTTONDOWN:
+                mx, my = event.pos
+                # Vote on an actor
+                for i, act in enumerate(all_actors):
+                    if pygame.Rect(350, 200 + i*60, 300, 40).collidepoint(mx, my) and act.alive:
+                        # Process voting outcome
+                        if act.role == "Imposter":
+                            voted_out_text = f"{act.color} was the Imposter!"
+                            act.alive = False
+                        else:
+                            voted_out_text = f"{act.color} was not an Imposter."
+                            act.alive = False
+                        meeting_timer = 90 # short delay to show result
+                        
+        elif game_state == "GAMEOVER":
+            if event.get_type() == pygame.KEYDOWN:
+                game_state = "MENU"
+
+    # --- Game Logic Updates ---
+    if game_state == "PLAYING":
+        # Player Movement
+        keys = pygame.key.get_pressed()
+        dx, dy = 0, 0
+        if keys[pygame.K_LEFT] or keys[pygame.K_a]: dx = -player.speed
+        if keys[pygame.K_RIGHT] or keys[pygame.K_d]: dx = player.speed
+        if keys[pygame.K_UP] or keys[pygame.K_w]: dy = -player.speed
+        if keys[pygame.K_DOWN] or keys[pygame.K_s]: dy = player.speed
+        
+        if dx != 0 or dy != 0:
+            if in_bounds((player.x + dx, player.y + dy)):
+                player.x += dx
+                player.y += dy
+                
+        # Bot logic & Imposter Kills
+        for act in all_actors:
+            act.move()
+            if act.alive and act.role == "Imposter" and act.is_ai:
+                # AI Imposter tries to kill nearby crewmates
+                for vic in all_actors:
+                    if vic.alive and vic.role == "Crewmate" and math.hypot(act.x - vic.x, act.y - vic.y) < 40:
+                        vic.alive = False
+                        
+        # Win / Loss Condition Checks
+        alives = [a for a in all_actors if a.alive]
+        imposters = [a for a in alives if a.role == "Imposter"]
+        crewmates = [a for a in alives if a.role == "Crewmate"]
+        
+        if len(imposters) == 0:
+            game_state = "GAMEOVER"
+            winner = "Crewmates Win! All Imposters eliminated."
+        elif len(imposters) >= len(crewmates):
+            game_state = "GAMEOVER"
+            winner = "Imposters Win! Crewmates outnumbered."
+        elif player.role == "Crewmate" and all(t["done"] for t in tasks):
+            game_state = "GAMEOVER"
+            winner = "Crewmates Win! All tasks completed."
+
+    elif game_state == "MEETING":
+        meeting_timer -= 1
+        if meeting_timer <= 0:
+            game_state = "PLAYING"
+
+    # --- Render Screens ---
+    if game_state == "MENU":
+        title_text = large_font.render("AMONG US 2D CLONE", True, RED)
+        screen.blit(title_text, (WIDTH//2 - title_text.get_width()//2, 150))
+        
+        pygame.draw.rect(screen, GRAY, (350, 300, 300, 50))
+        btn1 = font.render("Play as Crewmate", True, WHITE)
+        screen.blit(btn1, (WIDTH//2 - btn1.get_width()//2, 310))
+        
+        pygame.draw.rect(screen, GRAY, (350, 380, 300, 50))
+        btn2 = font.render("Play as Imposter", True, WHITE)
+        screen.blit(btn2, (WIDTH//2 - btn2.get_width()//2, 390))
+
+    elif game_state in ["PLAYING", "TASK"]:
+        # Draw Map Boundaries
+        for room_name, rect in rooms.items():
+            pygame.draw.rect(screen, DARK_GRAY, rect)
+            pygame.draw.rect(screen, LIGHT_GRAY, rect, 2)
+            r_txt = font.render(room_name, True, WHITE)
+            screen.blit(r_txt, (rect.x + 5, rect.y + 5))
+            
+        for corr in corridors:
+            pygame.draw.rect(screen, DARK_GRAY, corr)
+            pygame.draw.rect(screen, LIGHT_GRAY, corr, 2)
+            
+        # Draw Emergency Button
+        pygame.draw.circle(screen, RED, emergency_button_rect.center, 15)
+        
+        # Draw Tasks
+        for t in tasks:
+            if not t["done"]:
+                pygame.draw.rect(screen, YELLOW, t["rect"])
+                
+        # Draw Actors
+        for act in all_actors:
+            act.draw(screen)
+            
+        # HUD / Text Info
+        role_txt = font.render(f"Role: {player.role}", True, RED if player.role == "Imposter" else GREEN)
+        screen.blit(role_txt, (20, 20))
+        
+        if player.role == "Crewmate":
+            done_cnt = sum(1 for t in tasks if t["done"])
+            task_txt = font.render(f"Tasks: {done_cnt}/{len(tasks)}", True, WHITE)
+            screen.blit(task_txt, (20, 50))
+        else:
+            kill_txt = font.render(f"Kill Cooldown: {max(0, player.cooldown//60)}s (Press Q near crew)", True, RED)
+            screen.blit(kill_txt, (20, 50))
+
+        # Render Task Overlay Mini-game
+        if game_state == "TASK" and current_active_task:
+            overlay = pygame.Surface((600, 400))
+            overlay.fill(DARK_GRAY)
+            pygame.draw.rect(overlay, WHITE, (0, 0, 600, 400), 4)
+            
+            t_title = font.render(f"Task: {current_active_task['name']}", True, WHITE)
+            overlay.blit(t_title, (30, 20))
+            
+            if current_active_task["name"] == "Swipe Card":
+                # Draw card reader
+                pygame.draw.rect(overlay, GRAY, (100, 150, 400, 100))
+                pygame.draw.rect(overlay, BLACK, (150, 180, 300, 40))
+                card_txt = font.render("Drag Card From Left to Right" if swipe_stage == 1 else "Click Card to Start", True, YELLOW)
+                overlay.blit(card_txt, (150, 270))
+                pygame.draw.rect(overlay, RED if swipe_stage == 0 else GREEN, (50, 150, 40, 100))
+                
+            elif current_active_task["name"] == "Fix Wiring":
+                desc_txt = font.render("Click anywhere inside to finish wiring instantly", True, YELLOW)
+                overlay.blit(desc_txt, (50, 180))
+                
+            screen.blit(overlay, (200, 150))
+
+    elif game_state == "MEETING":
+        m_title = large_font.render("Who is the Imposter?", True, RED)
+        screen.blit(m_title, (WIDTH//2 - m_title.get_width()//2, 50))
+        
+        if voted_out_text:
+            v_txt = font.render(voted_out_text, True, YELLOW)
+            screen.blit(v_txt, (WIDTH//2 - v_txt.get_width()//2, 120))
+            
+        for i, act in enumerate(all_actors):
+            box_rect = pygame.Rect(350, 200 + i*60, 300, 40)
+            pygame.draw.rect(screen, GRAY if act.alive else DARK_GRAY, box_rect)
+            pygame.draw.rect(screen, WHITE, box_rect, 2)
+            
+            # Label actor by color index
+            status = "Alive" if act.alive else "Dead"
+            act_txt = font.render(f"Player {i+1} ({status})", True, act.color)
+            screen.blit(act_txt, (370, 210 + i*60))
+
+    elif game_state == "GAMEOVER":
+        go_txt = large_font.render("GAME OVER", True, RED)
+        win_txt = font.render(winner, True, WHITE)
+        restart_txt = font.render("Press any key to return to Main Menu", True, LIGHT_GRAY)
+        
+        screen.blit(go_txt, (WIDTH//2 - go_txt.get_width()//2, 200))
+        screen.blit(win_txt, (WIDTH//2 - win_txt.get_width()//2, 280))
+        screen.blit(restart_txt, (WIDTH//2 - restart_txt.get_width()//2, 400))
+
+    pygame.display.flip()
+    clock.tick(FPS)
+
+pygame.quit()
+sys.exit()
