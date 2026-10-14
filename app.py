@@ -1,9 +1,10 @@
-import streamlit as str
+import streamlit as st
+import streamlit.components.v1 as components
 
-# Cấu hình hiển thị rộng cho game
-str.set_page_config(page_title="Among Us 2D Standard Edition", layout="wide")
+# 1. Cấu hình hiển thị giao diện rộng cho game
+st.set_page_config(page_title="Among Us 2D Standard Edition", layout="wide")
 
-str.markdown("""
+st.markdown("""
     <style>
         .block-container { padding-top: 1rem; padding-bottom: 0rem; }
         footer {visibility: hidden;}
@@ -49,7 +50,7 @@ str.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-str.markdown("""
+st.markdown("""
 <div class="game-container">
     <div class="game-header">AMONG US EVOLUTION</div>
     <div class="tip-box">
@@ -60,7 +61,8 @@ str.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-game_safe_html = """
+# 2. Khối mã HTML và JavaScript xử lý Engine đồ họa của game
+game_code = """
 <div style="display: flex; justify-content: center; position: relative;">
     <canvas id="gameCanvas" width="800" height="480" tabindex="1"></canvas>
 </div>
@@ -71,7 +73,6 @@ const ctx = canvas.getContext("2d");
 
 canvas.focus();
 
-// Phân vai ngẫu nhiên
 const isUserImposter = Math.random() < 0.3;
 let showRoleScreen = true;
 let roleScreenTimer = 120; 
@@ -179,7 +180,6 @@ function isInRoom(ent, roomName) {
     return (cx >= r.x && cx <= r.x + r.w && cy >= r.y && cy <= r.y + r.h);
 }
 
-// Hàm vẽ an toàn không dùng roundRect bị lỗi
 function drawCharacter(ctx, x, y, width, height, color, isDead) {
     if (isDead) {
         ctx.fillStyle = color;
@@ -189,19 +189,15 @@ function drawCharacter(ctx, x, y, width, height, color, isDead) {
         return;
     }
     const r = width / 2;
-    // Balo
     ctx.fillStyle = color;
     ctx.fillRect(x - 5, y + 8, 5, 16);
-    // Thân
     ctx.beginPath();
     ctx.arc(x + r, y + r, r, Math.PI, 0);
     ctx.lineTo(x + width, y + height - 6);
     ctx.lineTo(x, y + height - 6);
     ctx.closePath(); ctx.fill();
-    // Chân
     ctx.fillRect(x, y + height - 6, 6, 6);
     ctx.fillRect(x + width - 6, y + height - 6, 6, 6);
-    // Kính bảo hộ phẳng (Tránh lỗi trình duyệt)
     ctx.fillStyle = "#e3fafc";
     ctx.fillRect(x + width - 6, y + 6, 10, 8);
 }
@@ -287,4 +283,6 @@ function draw() {
         ctx.textAlign = "center";
         ctx.fillText(btn.label, btn.x, btn.y + 4);
     }
+
+    ctx.fillStyle = "#ffffff";
 
