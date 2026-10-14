@@ -1,178 +1,219 @@
 import streamlit as str
 
-# Cấu hình giao diện Streamlit hiển thị rộng rãi để chơi game
-str.set_page_config(page_title="Among Us 2D - Streamlit Edition", layout="wide")
+# Cấu hình hiển thị rộng cho game
+str.set_page_config(page_title="Among Us 2D Web Edition", layout="wide")
 
 str.markdown("""
     <style>
-        /* Tối ưu hóa giao diện Streamlit ẩn bớt các khoảng trống thừa */
         .block-container { padding-top: 1rem; padding-bottom: 0rem; }
         footer {visibility: hidden;}
         #MainMenu {visibility: hidden;}
         
-        /* Khung chứa game */
-        .game-wrapper {
+        .game-container {
             display: flex;
             flex-direction: column;
             align-items: center;
-            justify-content: center;
-            font-family: 'Courier New', Courier, monospace;
-            background-color: #0b0e14;
-            color: #ffffff;
-            padding: 10px;
-            border-radius: 12px;
-            box-shadow: 0px 8px 24px rgba(0,0,0,0.7);
+            background-color: #0c1017;
+            font-family: 'Arial', sans-serif;
+            padding: 15px;
+            border-radius: 16px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+            max-width: 840px;
+            margin: auto;
         }
-        
-        .game-title {
-            color: #ff4747;
-            font-weight: bold;
-            text-shadow: 2px 2px #000;
+        .game-header {
+            color: #ff3e3e;
+            font-size: 32px;
+            font-weight: 900;
+            letter-spacing: 3px;
             margin-bottom: 5px;
+            text-shadow: 3px 3px 0px #000;
         }
-
-        .instructions {
-            background: #161c24;
-            padding: 8px 15px;
+        .tip-box {
+            background-color: #161f2c;
+            color: #00e1ff;
+            padding: 8px 16px;
             border-radius: 8px;
             font-size: 13px;
-            margin-bottom: 10px;
-            border-left: 4px solid #00bcff;
+            margin-bottom: 15px;
+            border-bottom: 3px solid #ffaa00;
+            text-align: center;
         }
-
         canvas {
-            border: 4px solid #3a4454;
-            background-color: #111721;
-            box-shadow: inset 0 0 20px #000;
-            border-radius: 8px;
-            cursor: crosshair;
+            border: 4px solid #253042;
+            background-color: #121824;
+            border-radius: 12px;
+            box-shadow: inset 0 0 30px #000;
+            outline: none;
         }
     </style>
 """, unsafe_allow_html=True)
 
-# Giao diện hiển thị phía trên Canvas game
 str.markdown("""
-<div class="game-wrapper">
-    <h1 class="game-title">AMONG US 2D</h1>
-    <div class="instructions">
-        🕹️ <b>Cách chơi:</b> Dùng các phím <b>W, A, S, D</b> hoặc <b>Phím Mũi Tên</b> để di chuyển. <br>
-        🎯 <b>Nhiệm vụ:</b> Đến gần các chấm màu <b>Vàng (Task)</b> để sửa máy. Né tránh Bot màu <b>Đỏ (Imposter)</b> kẻo bị ám sát!
+<div class="game-container">
+    <div class="game-header">AMONG US 2D</div>
+    <div class="tip-box">
+        ⚠️ <b>LƯU Ý:</b> Click chuột vào khung màn hình đen bên dưới trước khi bấm phím để kích hoạt di chuyển!<br>
+        🎮 Điều khiển bằng cụm phím <b>W - A - S - D</b> hoặc <b>Phím Mũi Tên</b>. Nhiệm vụ: Chạy đến chấm <b>Vàng (Task)</b>.
     </div>
 </div>
 """, unsafe_allow_html=True)
 
-# Toàn bộ logic game viết bằng JavaScript chạy trực tiếp trên trình duyệt của người dùng
-game_js_html = """
+# Khối mã xử lý Logic Game & Vẽ tạo hình nhân vật chân thực
+game_html_code = """
 <div style="display: flex; justify-content: center;">
-    <canvas id="amongUsCanvas" width="800" height="500"></canvas>
+    <canvas id="gameCanvas" width="800" height="480" tabindex="1"></canvas>
 </div>
 
 <script>
-const canvas = document.getElementById("amongUsCanvas");
+const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 
-// Cấu hình Người chơi (Crewmate Xanh)
+// Tự động focus vào canvas ngay khi load trang để tránh lỗi phím
+canvas.focus();
+
+// Người chơi (Crewmate)
 const player = {
-    x: 100,
-    y: 250,
-    size: 15,
-    speed: 4,
+    x: 150,
+    y: 240,
+    width: 24,
+    height: 32,
+    speed: 4.5,
     color: "#00d2ff",
-    tasksCompleted: 0
+    tasksDone: 0
 };
 
-// Cấu hình Kẻ giả mạo (Imposter Đỏ chạy tự động)
+// Kẻ địch AI (Imposter)
 const imposter = {
-    x: 700,
-    y: 250,
-    size: 15,
-    speed: 2,
-    color: "#ff3333",
-    state: "patrol", // patrol hoặc chase
-    targetX: 700,
-    targetY: 250
+    x: 650,
+    y: 240,
+    width: 24,
+    height: 32,
+    speed: 2.2,
+    color: "#ff3e3e",
+    targetX: 650,
+    targetY: 240,
+    state: "patrol"
 };
 
-// Danh sách các phòng và Vị trí nhiệm vụ (Màu vàng)
+// Bản đồ các vị trí Nhiệm vụ (Vòng tròn Vàng)
 const tasks = [
-    { name: "Cafeteria", x: 400, y: 80, radius: 20, completed: false },
-    { name: "Electrical", x: 150, y: 400, radius: 20, completed: false },
-    { name: "Weapons", x: 650, y: 120, radius: 20, completed: false },
-    { name: "Navigation", x: 720, y: 300, radius: 20, completed: false }
+    { name: "Electrical", x: 120, y: 100, radius: 22, done: false },
+    { name: "Cafeteria", x: 400, y: 80, radius: 22, done: false },
+    { name: "Storage", x: 400, y: 400, radius: 22, done: false },
+    { name: "Weapons", x: 680, y: 120, radius: 22, done: false }
 ];
 
-// Trạng thái chung của Trận đấu
-let gameState = "PLAYING"; // PLAYING, WIN, LOSE
+let gameState = "PLAYING";
 const keys = {};
 
-// Lắng nghe sự kiện bàn phím
-window.addEventListener("keydown", (e) => { keys[e.key.toLowerCase()] = true; });
+// Sự kiện nhấn phím - Chặn cuộn trang web mặc định khi chơi game
+window.addEventListener("keydown", (e) => {
+    if(["arrowup", "arrowdown", "arrowleft", "arrowright", " "].includes(e.key.toLowerCase())) {
+        e.preventDefault();
+    }
+    keys[e.key.toLowerCase()] = true;
+});
 window.addEventListener("keyup", (e) => { keys[e.key.toLowerCase()] = false; });
 
-// Hàm tính khoảng cách giữa 2 vật thể
-function getDistance(x1, y1, x2, y2) {
-    return Math.hypot(x2 - x1, y2 - y1);
+// Hàm vẽ tạo hình nhân vật Among Us đặc trưng (Thân bo tròn, kính, balo sau lưng)
+function drawCrewmate(ctx, x, y, width, height, color, isImposter) {
+    const r = width / 2;
+    
+    // 1. Vẽ Balo sau lưng (Bên trái hoặc phải tùy thuộc hướng)
+    ctx.fillStyle = color;
+    ctx.shadowBlur = 0;
+    if (!isImposter) {
+        ctx.fillRect(x - width/3 - 2, y + height/4, width/3 + 2, height/2);
+    } else {
+        ctx.fillRect(x + width, y + height/4, width/3 + 2, height/2);
+    }
+
+    // 2. Vẽ Thân hình Bo đầu (Capsule Shape)
+    ctx.beginPath();
+    ctx.arc(x + r, y + r, r, Math.PI, 0); // Đầu tròn
+    ctx.lineTo(x + width, y + height - r);
+    ctx.lineTo(x, y + height - r);
+    ctx.closePath();
+    ctx.fill();
+
+    // 3. Vẽ hai Chân tách biệt
+    ctx.fillRect(x, y + height - 8, width/3, 8);
+    ctx.fillRect(x + width - width/3, y + height - 8, width/3, 8);
+
+    // 4. Vẽ Kính bảo hộ hình bầu dục (Visor) cực kỳ đặc trưng
+    ctx.fillStyle = isImposter ? "#4b6584" : "#ffffff";
+    ctx.strokeStyle = "#1e272e";
+    ctx.lineWidth = 1.5;
+    
+    ctx.beginPath();
+    let visorX = isImposter ? x - 4 : x + width - 10;
+    ctx.roundRect(visorX, y + height/5, 14, 10, 5);
+    ctx.fill();
+    ctx.stroke();
 }
 
-// Xử lý Logic di chuyển và va chạm từng khung hình
-function update() {
+function updateLogic() {
     if (gameState !== "PLAYING") return;
 
-    // 1. Di chuyển Người chơi bằng phím W-A-S-D hoặc Arrow Keys
+    // Di chuyển mượt mà nhờ bắt sự kiện đồng bộ trực tiếp
     if (keys["w"] || keys["arrowup"]) player.y -= player.speed;
     if (keys["s"] || keys["arrowdown"]) player.y += player.speed;
     if (keys["a"] || keys["arrowleft"]) player.x -= player.speed;
     if (keys["d"] || keys["arrowright"]) player.x += player.speed;
 
-    // Giới hạn người chơi không chạy ra khỏi viền map
-    player.x = Math.max(player.size, Math.min(canvas.width - player.size, player.x));
-    player.y = Math.max(player.size, Math.min(canvas.height - player.size, player.y));
+    // Giới hạn biên map
+    player.x = Math.max(10, Math.min(canvas.width - player.width - 10, player.x));
+    player.y = Math.max(10, Math.min(canvas.height - player.height - 10, player.y));
 
-    // 2. Xử lý làm nhiệm vụ khi đứng đè lên chấm Vàng
+    // Trung tâm của người chơi để tính va chạm toán học
+    let pCenterX = player.x + player.width/2;
+    let pCenterY = player.y + player.height/2;
+
+    // Kiểm tra làm nhiệm vụ sửa máy
     tasks.forEach(task => {
-        if (!task.completed && getDistance(player.x, player.y, task.x, task.y) < task.radius + player.size) {
-            task.completed = true;
-            player.tasksCompleted++;
-            if (player.tasksCompleted === tasks.length) {
+        let dist = Math.hypot(pCenterX - task.x, pCenterY - task.y);
+        if (!task.done && dist < task.radius + player.width/2) {
+            task.done = true;
+            player.tasksDone++;
+            if (player.tasksDone === tasks.length) {
                 gameState = "WIN";
             }
         }
     });
 
-    // 3. AI của Imposter (Kẻ giết người tự động rượt đuổi)
-    let distToPlayer = getDistance(imposter.x, imposter.y, player.x, player.y);
-    
-    if (distToPlayer < 180) {
-        // Nếu phát hiện Crewmate ở gần, chuyển sang chế độ Săn Đuổi
+    // Trí tuệ nhân tạo săn lùng của Imposter
+    let impCenterX = imposter.x + imposter.width/2;
+    let impCenterY = imposter.y + imposter.height/2;
+    let distToPlayer = Math.hypot(pCenterX - impCenterX, pCenterY - impCenterY);
+
+    if (distToPlayer < 200) {
         imposter.state = "chase";
-        let angle = Math.atan2(player.y - imposter.y, player.x - imposter.x);
+        let angle = Math.atan2(pCenterY - impCenterY, pCenterX - impCenterX);
         imposter.x += Math.cos(angle) * imposter.speed;
         imposter.y += Math.sin(angle) * imposter.speed;
     } else {
-        // Đi tuần tra tự động giữa các phòng ngẫu nhiên
-        if (imposter.state === "chase" || getDistance(imposter.x, imposter.y, imposter.targetX, imposter.targetY) < 10) {
+        if (imposter.state === "chase" || Math.hypot(imposter.targetX - imposter.x, imposter.targetY - imposter.y) < 15) {
             imposter.state = "patrol";
-            imposter.targetX = Math.random() * (canvas.width - 40) + 20;
-            imposter.targetY = Math.random() * (canvas.height - 40) + 20;
+            imposter.targetX = Math.random() * (canvas.width - 60) + 30;
+            imposter.targetY = Math.random() * (canvas.height - 60) + 30;
         }
         let angle = Math.atan2(imposter.targetY - imposter.y, imposter.targetX - imposter.x);
         imposter.x += Math.cos(angle) * (imposter.speed * 0.8);
         imposter.y += Math.sin(angle) * (imposter.speed * 0.8);
     }
 
-    // 4. Kiểm tra điều kiện thua cuộc (Imposter chạm trúng Crewmate)
-    if (distToPlayer < player.size + imposter.size) {
+    // Bị bắt -> Kẻ mạo danh hạ gục Crewmate
+    if (distToPlayer < (player.width + imposter.width) / 1.5) {
         gameState = "LOSE";
     }
 }
 
-// Hàm vẽ Đồ họa lên màn hình canvas
-function draw() {
-    // Xóa màn hình cũ để vẽ khung hình mới
+function renderGraphics() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Vẽ nền Bản đồ (Hệ thống lưới vũ trụ đơn giản)
-    ctx.strokeStyle = "#1b2436";
+    // Vẽ sàn tàu không gian kẻ vạch
+    ctx.strokeStyle = "#1a2332";
     ctx.lineWidth = 1;
     for (let i = 0; i < canvas.width; i += 40) {
         ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, canvas.height); ctx.stroke();
@@ -181,82 +222,61 @@ function draw() {
         ctx.beginPath(); ctx.moveTo(0, j); ctx.lineTo(canvas.width, j); ctx.stroke();
     }
 
-    // Vẽ các Khu vực Nhiệm vụ (Vòng tròn Vàng)
+    // Vẽ các căn phòng nhiệm vụ màu vàng phát sáng nhẹ
     tasks.forEach(task => {
         ctx.beginPath();
         ctx.arc(task.x, task.y, task.radius, 0, Math.PI * 2);
-        ctx.fillStyle = task.completed ? "rgba(46, 204, 113, 0.2)" : "rgba(241, 196, 15, 0.3)";
+        ctx.fillStyle = task.done ? "rgba(46, 204, 113, 0.15)" : "rgba(241, 196, 15, 0.25)";
         ctx.fill();
-        ctx.strokeStyle = task.completed ? "#2ecc71" : "#f1c40f";
-        ctx.lineWidth = 2;
+        ctx.strokeStyle = task.done ? "#2ecc71" : "#f1c40f";
+        ctx.lineWidth = 3;
         ctx.stroke();
 
-        // Tên phòng
-        ctx.fillStyle = "#a5b1c2";
-        ctx.font = "11px Arial";
+        ctx.fillStyle = "#8a99ad";
+        ctx.font = "bold 12px Arial";
         ctx.textAlign = "center";
-        ctx.fillText(task.name, task.x, task.y - task.radius - 5);
+        ctx.fillText(task.name, task.x, task.y - task.radius - 8);
     });
 
-    // Vẽ Nhân vật Người chơi (Crewmate) kèm Kính bảo hộ đặc trưng
-    ctx.beginPath();
-    ctx.arc(player.x, player.y, player.size, 0, Math.PI * 2);
-    ctx.fillStyle = player.color;
-    ctx.fill();
-    // Kính bảo hộ
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(player.x + 2, player.y - 6, 8, 8);
+    // Vẽ Crewmate của người chơi (Xanh)
+    drawCrewmate(ctx, player.x, player.y, player.width, player.height, player.color, false);
 
-    // Vẽ Nhân vật AI Kẻ địch (Imposter Đỏ)
-    ctx.beginPath();
-    ctx.arc(imposter.x, imposter.y, imposter.size, 0, Math.PI * 2);
-    ctx.fillStyle = imposter.color;
-    ctx.fill();
-    // Kính bảo hộ Imposter
-    ctx.fillStyle = "#636e72";
-    ctx.fillRect(imposter.x - 10, imposter.y - 6, 8, 8);
+    // Vẽ Kẻ mạo danh Imposter (Đỏ)
+    drawCrewmate(ctx, imposter.x, imposter.y, imposter.width, imposter.height, imposter.color, true);
 
-    // Hiển thị thanh Tiến trình làm nhiệm vụ (Task Bar) ở góc trên
+    // Thanh hiển thị tiến độ làm Task
     ctx.fillStyle = "#ffffff";
-    ctx.font = "bold 14px Arial";
+    ctx.font = "bold 15px Arial";
     ctx.textAlign = "left";
-    ctx.fillText(`TOTAL TASKS COMPLETED: ${player.tasksCompleted} / ${tasks.length}`, 20, 30);
+    ctx.fillText(`⚡ TIẾN ĐỘ NHIỆM VỤ: ${player.tasksDone} / ${tasks.length}`, 25, 35);
 
-    // Giao diện khi Thắng hoặc Thua cuộc
+    // Màn hình Kết thúc trận đấu
     if (gameState === "WIN") {
-        ctx.fillStyle = "rgba(0, 0, 0, 0.8)";
+        ctx.fillStyle = "rgba(0,0,0,0.85)";
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         ctx.fillStyle = "#2ecc71";
-        ctx.font = "bold 40px Courier New";
+        ctx.font = "bold 45px Arial";
         ctx.textAlign = "center";
         ctx.fillText("VICTORY", canvas.width / 2, canvas.height / 2);
-        ctx.font = "16px Arial";
-        ctx.fillStyle = "#ffffff";
-        ctx.fillText("Bạn đã hoàn thành xuất sắc toàn bộ nhiệm vụ!", canvas.width / 2, canvas.height / 2 + 50);
     } else if (gameState === "LOSE") {
-        ctx.fillStyle = "rgba(0, 0, 0, 0.85)";
+        ctx.fillStyle = "rgba(0,0,0,0.85)";
         ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.fillStyle = "#e74c3c";
-        ctx.font = "bold 40px Courier New";
+        ctx.fillStyle = "#ea2027";
+        ctx.font = "bold 45px Arial";
         ctx.textAlign = "center";
         ctx.fillText("DEFEAT", canvas.width / 2, canvas.height / 2);
-        ctx.font = "16px Arial";
-        ctx.fillStyle = "#ffffff";
-        ctx.fillText("Bạn đã bị Imposter sát hại bí mật!", canvas.width / 2, canvas.height / 2 + 50);
     }
 }
 
-// Vòng lặp Core của Game chạy liên tục 60 khung hình / giây
-function gameLoop() {
-    update();
-    draw();
-    requestAnimationFrame(gameLoop);
+function loop() {
+    updateLogic();
+    renderGraphics();
+    requestAnimationFrame(loop);
 }
 
-// Khởi chạy game
-gameLoop();
+loop();
 </script>
 """
 
-# Truyền mã nguồn HTML5/JS vào giao diện Streamlit
-str.components.v1.html(game_js_html, height=530)
+# Chèn tệp mã nguồn HTML vào Streamlit
+str.components.v1.html(game_html_code, height=500)
